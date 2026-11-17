@@ -57,6 +57,27 @@ input[type=text]{width:100%;padding:12px;border:1.5px solid var(--bd);border-rad
 .msg{padding:14px;border:1.5px dashed var(--ng);border-radius:8px}
 .rec{padding:12px 0;border-top:1px solid var(--bd)}.rec:first-child{border-top:0}.rec h3{margin:0 0 6px;font-size:16px}
 .m{display:flex;align-items:center;gap:8px;font-size:14px;margin:4px 0}.m span{width:4em;color:var(--mut)}.m .t{flex:1;height:10px;background:var(--bd);border-radius:5px;overflow:hidden}.m .t i{display:block;height:100%}.m b{width:3.4em;text-align:right}.sub{font-size:12px;color:var(--mut)}
+.sort-head{margin:0 0 2px;font-size:14px;color:var(--mut)}
+.sort-hint{margin:0 0 12px;font-size:14px;color:var(--mut)}
+.sort-line{font:26px/2.5 var(--ud);white-space:pre-wrap;word-break:break-word;margin:0 0 18px;padding:14px 16px;background:color-mix(in srgb,var(--hi) 8%,var(--card));border:1px solid var(--bd);border-radius:12px}
+.sort-blank{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px;vertical-align:middle;min-width:5.5em;min-height:58px;padding:4px 8px;margin:2px 4px;border:2px dashed var(--sel);border-radius:12px;background:color-mix(in srgb,var(--sel) 6%,transparent)}
+.sort-blank.solo{display:flex;margin:0 0 12px}
+.sort-hole{font-size:16px;color:var(--mut);padding:0 6px}
+.sort-chip{display:inline-flex;align-items:baseline;gap:6px;font:700 26px/1.3 var(--ud);padding:6px 14px;border:2px solid var(--sel);border-radius:10px;background:var(--card);color:var(--tx);cursor:pointer}
+span.sort-chip{cursor:default}
+.sort-chip small{font-size:15px;color:var(--mut);font-weight:400}
+.sort-chip.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}
+.sort-chip.ng{border-color:var(--ng);background:color-mix(in srgb,var(--ng) 16%,transparent)}
+.sort-words{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 14px}
+.sort-word{font:700 26px/1.3 var(--ud);padding:14px 22px;min-height:62px;border:2px solid var(--bd);border-bottom-width:5px;border-radius:14px;background:var(--card);color:var(--tx);cursor:pointer}
+.sort-word small{font-size:16px;color:var(--mut);margin-right:6px;font-weight:400}
+.sort-word:not(:disabled):hover,.sort-word:not(:disabled):active{border-color:var(--sel)}
+.sort-word:disabled{opacity:.28;cursor:default}
+.sort-tools{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--bd)}
+.sort-tools button{padding:10px 16px;border:1.5px solid var(--bd);border-radius:8px;background:var(--card);cursor:pointer;font-size:16px}
+.sort-tools button:disabled{opacity:.4;cursor:default}
+.sort-left{margin-left:auto;color:var(--mut);font-size:14px}
+@media(max-width:480px){.sort-line,.sort-chip,.sort-word{font-size:22px}.sort-word{padding:12px 16px;min-height:56px}.sort-blank{min-height:52px}}
 :focus-visible{outline:3px solid var(--hi);outline-offset:2px}
 </style>
 </head>
@@ -124,7 +145,12 @@ function sortParts(question){
     if(parts.length>=(best?.parts.length||0))best={line,parts};
   }
   if(!best)return null;
-  return {parts:best.parts,clean:lines.filter(line=>line!==best.line).join('\n').replace(/【並べ替え】/,'【並べ替え】').trim()};
+  const cl=lines.filter(line=>line!==best.line);
+  const head=/【並べ替え】/.test(cl[0]||'')?cl.shift():'';
+  const body=cl.join('\n').trim(), bm=body.match(/[(（][ \u3000]*[)）]/);
+  return {parts:best.parts,clean:lines.filter(line=>line!==best.line).join('\n').trim(),
+    head:head.replace(/番号の順に答えなさい。?[(（]例[:：][^)）]*[)）]/,'').trim(),
+    before:bm?body.slice(0,bm.index):body, after:bm?body.slice(bm.index+bm[0].length):null};
 }
 function digitOrder(value){
   return String(value||'').replace(/[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/g,c=>String(circled.indexOf(c)+1)).replace(/[^0-9]/g,'');
@@ -155,7 +181,7 @@ function setData(text){
     used.add(no);
     const question=(o['問題']).replace(/\r\n?/g,'\n').replace(/[ \t]*\n?[ \t]*(【(?:和訳|指示)】)/,'\n$1');
     ALL.push({no,q:sort?sort.clean:question,c,a:fmt=='4択'?A:a,ex:o['解説']||'',
-      unit:(o['単元']||o['分野']||'').trim()||'その他',fmt,kind:sort?'sort':'text',parts:sort?sort.parts:[],sentence:sort?correctSentence(o['解説']):'',alt:(o['別解']||'').split('|').map(x=>x.trim()).filter(Boolean)});
+      unit:(o['単元']||o['分野']||'').trim()||'その他',fmt,kind:sort?'sort':'text',sp:sort||null,parts:sort?sort.parts:[],sentence:sort?correctSentence(o['解説']):'',alt:(o['別解']||'').split('|').map(x=>x.trim()).filter(Boolean)});
   });
   LSK='quiz_v1_'+title;   // 学習記録はアプリ名ごとに保存(アプリ名は他のアプリと重ならないようにする)
   st=loadSt();
@@ -219,13 +245,10 @@ function show(){
   <div class="bar"><span>${Q.i+1} / ${total}問 ・ 正解 ${Q.ok}</span><button id="quit">ホームに戻る</button></div>
   <div class="prog"><i style="width:${Q.i/total*100}%"></i></div>
   <div class="card"><div class="unit">${esc(q.unit)}</div>
-  <p class="q">${esc(q.q)}</p>
+  ${q.kind=='sort'?`<p class="sort-head">${esc(q.sp.head)}</p>`:`<p class="q">${esc(q.q)}</p>`}
   <div id="in">${q.fmt=='4択'
     ?q.c.map((t,i)=>t?`<button class="ch" data-k="${'ABCD'[i]}"><b>${'ABCD'[i]}</b>${esc(t)}</button>`:'').join('')
-    :q.kind=='sort'?`<p class="sort-instruction">語句をタップして、正しい順番に並べてください。</p>
-      <div class="sort-answer" id="sortAnswer" aria-live="polite"></div>
-      <div class="sort-words" id="sortWords">${shuffle(q.parts).map((p,i)=>`<button class="sort-word" data-part="${q.parts.indexOf(p)}">${esc(p.label)} ${esc(p.word)}</button>`).join('')}</div>
-      <div class="sort-tools"><button id="sortUndo">1つ戻す</button><button id="sortClear">全部消す</button><button class="submit" id="sortSubmit" disabled>回答する</button></div>`
+    :q.kind=='sort'?sortHtml(q)
     :`<input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="答えを入力"><div class="acts"><button class="next" id="ok">回答する</button></div>`}
   </div><div id="fb"></div></div>`;
   $('#quit').onclick=quit;
@@ -233,19 +256,38 @@ function show(){
   else if(q.kind=='sort')initSort(q);
   else{const a=$('#ans');a.focus();$('#ok').onclick=()=>judge(a.value);a.onkeydown=e=>{if(e.key=='Enter'&&!e.isComposing)judge(a.value)}}
 }
+function sortHtml(q){
+  const s=q.sp, slot=`<span class="sort-blank empty" id="sortAnswer" aria-live="polite"></span>`;
+  const line=s.after===null?`<div class="sort-line">${esc(s.before)}</div>${slot.replace('sort-blank empty','sort-blank solo empty')}`
+    :`<div class="sort-line">${esc(s.before)}${slot}${esc(s.after)}</div>`;
+  return `<p class="sort-hint">語句をタップして、空所に正しい順番で入れましょう。</p>${line}
+    <div class="sort-words" id="sortWords">${shuffle(q.parts).map(p=>`<button type="button" class="sort-word" data-part="${q.parts.indexOf(p)}"><small>${esc(p.label)}</small>${esc(p.word)}</button>`).join('')}</div>
+    <div class="sort-tools"><button type="button" id="sortUndo">↩ 1つ戻る</button><button type="button" id="sortClear">すべて消す</button><span class="sort-left" id="sortLeft"></span></div>`;
+}
 function initSort(q){
-  Q.sortAnswer=[];
+  Q.sortAnswer=[];const n=q.parts.length;
   const paint=()=>{
-    $('#sortAnswer').innerHTML=Q.sortAnswer.map((idx,i)=>{const p=q.parts[idx];return `<span class="sort-slot"><small>${i+1}</small>${esc(p.label)} ${esc(p.word)}</span>`}).join('')||'<span class="sub">ここに解答が入ります</span>';
-    app.querySelectorAll('[data-part]').forEach(b=>b.disabled=Q.sortAnswer.includes(+b.dataset.part));
-    $('#sortSubmit').disabled=Q.sortAnswer.length!==q.parts.length;
+    const el=$('#sortAnswer'),A=Q.sortAnswer;
+    el.classList.toggle('empty',!A.length);
+    el.innerHTML=A.length?A.map((idx,i)=>{const p=q.parts[idx];return `<button type="button" class="sort-chip" data-pos="${i}" title="タップで取り消し"><small>${esc(p.label)}</small>${esc(p.word)}</button>`}).join(''):'<span class="sort-hole">ここに入ります</span>';
+    el.querySelectorAll('[data-pos]').forEach(b=>b.onclick=()=>{if(Q.done)return;Q.sortAnswer.splice(+b.dataset.pos,1);paint()});
+    app.querySelectorAll('[data-part]').forEach(b=>b.disabled=A.includes(+b.dataset.part));
+    $('#sortLeft').textContent=`残り ${n-A.length} 語`;
+    $('#sortUndo').disabled=$('#sortClear').disabled=!A.length;
   };
-  app.querySelectorAll('[data-part]').forEach(b=>b.onclick=()=>{const idx=+b.dataset.part;if(!Q.sortAnswer.includes(idx)){Q.sortAnswer.push(idx);paint()}});
-  $('#sortUndo').onclick=()=>{Q.sortAnswer.pop();paint()};
-  $('#sortClear').onclick=()=>{Q.sortAnswer=[];paint()};
-  $('#sortSubmit').onclick=()=>judge(Q.sortAnswer.map(i=>q.parts[i].num).join(''));
+  app.querySelectorAll('[data-part]').forEach(b=>b.onclick=()=>{
+    if(Q.done)return;const idx=+b.dataset.part;if(Q.sortAnswer.includes(idx))return;
+    Q.sortAnswer.push(idx);paint();
+    if(Q.sortAnswer.length===n)judge(Q.sortAnswer.map(i=>q.parts[i].num).join(''));   // 最後の語句で自動判定
+  });
+  $('#sortUndo').onclick=()=>{if(!Q.done){Q.sortAnswer.pop();paint()}};
+  $('#sortClear').onclick=()=>{if(!Q.done){Q.sortAnswer=[];paint()}};
   paint();
 }
+document.addEventListener('keydown',e=>{
+  if(e.key!='Backspace'||!Q||Q.done||Q.list[Q.i].kind!='sort'||e.target.tagName=='INPUT')return;
+  e.preventDefault();const u=$('#sortUndo');if(u)u.click();
+});
 function judge(v){
   const q=Q.list[Q.i];if(Q.done)return;
   let ok,ansText;
@@ -261,9 +303,9 @@ function judge(v){
   const lbl=()=>st.stock.includes(q.no)?'★ ストック済み':(auto?'☆ まだ自信がないのでストックに戻す':'☆ ストックに入れる');
   if(q.fmt=='4択')app.querySelectorAll('.ch').forEach(b=>{b.disabled=true;if(b.dataset.k==q.a)b.classList.add('ok');else if(b.dataset.k==v)b.classList.add('ng')});
   else if(q.kind=='sort'){
-    app.querySelectorAll('[data-part],#sortUndo,#sortClear,#sortSubmit').forEach(b=>b.disabled=true);
+    app.querySelectorAll('[data-part],#sortUndo,#sortClear').forEach(b=>b.disabled=true);
     const correct=digitOrder(q.a);
-    $('#sortAnswer').innerHTML=Q.sortAnswer.map((idx,i)=>{const p=q.parts[idx],good=String(p.num)==correct[i];return `<span class="sort-slot ${good?'ok':'ng'}"><small>${i+1}</small>${esc(p.label)} ${esc(p.word)}</span>`}).join('');
+    $('#sortAnswer').innerHTML=Q.sortAnswer.map((idx,i)=>{const p=q.parts[idx],good=String(p.num)==correct[i];return `<span class="sort-chip ${good?'ok':'ng'}"><small>${esc(p.label)}</small>${esc(p.word)}</span>`}).join('');
   }else{$('#ans').disabled=true;$('#ok').remove()}
   const last=Q.i==Q.list.length-1;
   const sortFeedback=q.kind=='sort'?`<p>あなたの解答: <span class="ans">${esc(Q.sortAnswer.map(i=>q.parts[i].label).join(''))}</span></p><p>正しい番号: <span class="ans">${esc(q.a)}</span></p>${q.sentence?`<p><b>正しい英文</b><br><span class="ans">${esc(q.sentence)}</span></p>`:''}`:'';
