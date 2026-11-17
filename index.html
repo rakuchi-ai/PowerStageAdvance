@@ -58,6 +58,12 @@ input[type=text]{width:100%;padding:12px;border:1.5px solid var(--bd);border-rad
 .rec{padding:12px 0;border-top:1px solid var(--bd)}.rec:first-child{border-top:0}.rec h3{margin:0 0 6px;font-size:16px}
 .m{display:flex;align-items:center;gap:8px;font-size:14px;margin:4px 0}.m span{width:4em;color:var(--mut)}.m .t{flex:1;height:10px;background:var(--bd);border-radius:5px;overflow:hidden}.m .t i{display:block;height:100%}.m b{width:3.4em;text-align:right}.sub{font-size:12px;color:var(--mut)}
 :focus-visible{outline:3px solid var(--hi);outline-offset:2px}
+.sort-wrap{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.sort-chip{padding:8px 12px;border:1.5px solid var(--bd);background:var(--card);border-radius:8px;cursor:pointer;font-size:16px;transition:all .15s}
+.sort-chip.used{opacity:.4;background:var(--bd)}
+.sort-box{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sort-box input{flex:1;letter-spacing:.1em;font-weight:700}
+.sort-clear{padding:12px 14px;border:1.5px solid var(--bd);background:var(--card);border-radius:8px;cursor:pointer;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -183,42 +189,83 @@ function start(){
   Q={list:p,i:0,ok:0,ng:[],done:false};show();
 }
 function quit(){if(confirm('演習をやめてホームに戻りますか?\n(ここまでの正誤は保存されます)'))home()}
+const CIRCLED_NUMS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+const toCircled = s => String(s).replace(/10|11|12|13|14|15|16|17|18|19|20|[1-9]/g, m => CIRCLED_NUMS[parseInt(m, 10) - 1] || m).replace(/-/g, '');
+const toDigits = s => String(s).replace(/[①-⑳]/g, c => String(CIRCLED_NUMS.indexOf(c) + 1)).replace(/[-\s]/g, '');
+
+function parseSortChoices(qText) {
+  if (!qText.includes('【並べ替え】')) return null;
+  const lines = qText.split('\n');
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine.includes('①')) return null;
+  const matches = [...lastLine.matchAll(/([①-⑳])\s*([^①-⑳]+)/g)];
+  if (!matches.length) return null;
+  return {
+    body: lines.slice(0, -1).join('\n'),
+    items: matches.map(m => ({ mark: m[1], num: String(CIRCLED_NUMS.indexOf(m[1]) + 1), text: m[2].trim() }))
+  };
+}
+
 function show(){
   const q=Q.list[Q.i], total=Q.list.length;
+  const sortData = q.fmt === '入力' ? parseSortChoices(q.q) : null;
+  const displayQ = sortData ? sortData.body : q.q;
+
+  let inputHtml = '';
+  if (q.fmt == '4択') {
+    inputHtml = q.c.map((t,i)=>t?`<button class="ch" data-k="${'ABCD'[i]}"><b>${'ABCD'[i]}</b>${esc(t)}</button>`:'').join('');
+  } else if (sortData) {
+    inputHtml = `
+      <div class="sort-wrap" id="sort-chips">
+        ${sortData.items.map(it => `<button type="button" class="sort-chip" data-mark="${it.mark}" data-num="${it.num}">${esc(it.mark)} ${esc(it.text)}</button>`).join('')}
+      </div>
+      <div class="sort-box">
+        <input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="上の語句をタップ、または番号を入力">
+        <button type="button" class="sort-clear" id="sort-clr">クリア</button>
+      </div>
+      <div class="acts"><button class="next" id="ok">回答する</button></div>`;
+  } else {
+    inputHtml = `<input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="答えを入力"><div class="acts"><button class="next" id="ok">回答する</button></div>`;
+  }
+
   app.innerHTML=`
   <div class="bar"><span>${Q.i+1} / ${total}問 ・ 正解 ${Q.ok}</span><button id="quit">ホームに戻る</button></div>
   <div class="prog"><i style="width:${Q.i/total*100}%"></i></div>
   <div class="card"><div class="unit">${esc(q.unit)}</div>
-  <p class="q">${esc(q.q)}</p>
-  <div id="in">${q.fmt=='4択'
-    ?q.c.map((t,i)=>t?`<button class="ch" data-k="${'ABCD'[i]}"><b>${'ABCD'[i]}</b>${esc(t)}</button>`:'').join('')
-    :`<input type="text" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="答えを入力"><div class="acts"><button class="next" id="ok">回答する</button></div>`}
-  </div><div id="fb"></div></div>`;
+  <p class="q">${esc(displayQ)}</p>
+  <div id="in">${inputHtml}</div><div id="fb"></div></div>`;
+
   $('#quit').onclick=quit;
-  if(q.fmt=='4択')app.querySelectorAll('.ch').forEach(b=>b.onclick=()=>judge(b.dataset.k));
-  else{const a=$('#ans');a.focus();$('#ok').onclick=()=>judge(a.value);a.onkeydown=e=>{if(e.key=='Enter'&&!e.isComposing)judge(a.value)}}
-}
-function judge(v){
-  const q=Q.list[Q.i];if(Q.done)return;
-  let ok,ansText;
-  if(q.fmt=='4択'){ok=v==q.a;ansText=q.a+'. '+q.c['ABCD'.indexOf(q.a)];}
-  else{if(!norm(v))return;ok=[q.a,...q.alt].some(a=>norm(a)==norm(v));ansText=q.a+(q.alt.length?`(別解: ${q.alt.join(' / ')})`:'');}
-  Q.done=true;Q.t=Date.now();
-  const wasStock=st.stock.includes(q.no), auto=ok&&wasStock, added=!ok&&!wasStock;
-  st.rec[q.no]=ok?'c':'x';
-  if(ok){Q.ok++;if(wasStock)st.stock=st.stock.filter(n=>n!==q.no)}
-  else{Q.ng.push(q);if(!wasStock)st.stock.push(q.no)}
-  save();
-  const lbl=()=>st.stock.includes(q.no)?'★ ストック済み':(auto?'☆ まだ自信がないのでストックに戻す':'☆ ストックに入れる');
-  if(q.fmt=='4択')app.querySelectorAll('.ch').forEach(b=>{b.disabled=true;if(b.dataset.k==q.a)b.classList.add('ok');else if(b.dataset.k==v)b.classList.add('ng')});
-  else{$('#ans').disabled=true;$('#ok').remove()}
-  const last=Q.i==Q.list.length-1;
-  $('#fb').innerHTML=`<div class="fb${ok?'':' bad'}"><h3>${ok?'◯ 正解':'✕ 不正解'}</h3>
-    <p>正解: <span class="ans">${esc(ansText)}</span></p><p>${esc(q.ex)}</p>${auto?'<p class="sub">ストックした問題に正答したので、正答扱いになりストックから外れました。</p>':''}${added?'<p class="sub">間違えた問題なので、ストックに追加しました。</p>':''}</div>
-    <div class="acts"><button class="st${st.stock.includes(q.no)?' on':''}" id="stk">${lbl()}</button>
-    <button class="next" id="nx">${last?'結果を見る':'次の問題'}</button></div>`;
-  $('#stk').onclick=e=>{toggleStock(q.no);e.target.classList.toggle('on',st.stock.includes(q.no));e.target.textContent=lbl()};
-  $('#nx').onclick=()=>{Q.done=false;if(last)result();else{Q.i++;show();scrollTo(0,0)}};
+  if(q.fmt=='4択'){
+    app.querySelectorAll('.ch').forEach(b=>b.onclick=()=>judge(b.dataset.k));
+  } else {
+    const a=$('#ans');
+    a.focus();
+    $('#ok').onclick=()=>judge(a.value);
+    a.onkeydown=e=>{if(e.key=='Enter'&&!e.isComposing)judge(a.value)};
+    if (sortData) {
+      const chips = app.querySelectorAll('.sort-chip');
+      const syncChips = () => {
+        const val = a.value;
+        const digits = toDigits(val);
+        chips.forEach(c => {
+          const used = val.includes(c.dataset.mark) || digits.includes(c.dataset.num);
+          c.classList.toggle('used', used);
+        });
+      };
+      chips.forEach(c => {
+        c.onclick = () => {
+          if (Q.done) return;
+          if (!c.classList.contains('used')) {
+            a.value += c.dataset.mark;
+            syncChips();
+          }
+        };
+      });
+      a.oninput = syncChips;
+      $('#sort-clr').onclick = () => { if (!Q.done) { a.value = ''; syncChips(); a.focus(); } };
+    }
+  }
 }
 // Enterキーで次の問題へ(回答直後のEnterの二重入力は無視する)
 document.addEventListener('keydown',e=>{
