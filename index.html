@@ -152,6 +152,10 @@ function sortParts(question){
     head:head.replace(/番号の順に答えなさい。?[(（]例[:：][^)）]*[)）]/,'').trim(),
     before:bm?body.slice(0,bm.index):body, after:bm?body.slice(bm.index+bm[0].length):null};
 }
+function ansNums(a){
+  const t=String(a||'');
+  return /[①-⑳]/.test(t)?[...t].filter(c=>circled.includes(c)).map(c=>circled.indexOf(c)+1):t.replace(/[^0-9]/g,'').split('').map(Number);
+}
 function digitOrder(value){
   return String(value||'').replace(/[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/g,c=>String(circled.indexOf(c)+1)).replace(/[^0-9]/g,'');
 }
@@ -265,13 +269,13 @@ function sortHtml(q){
     <div class="sort-tools"><button type="button" id="sortUndo">↩ 1つ戻る</button><button type="button" id="sortClear">すべて消す</button><span class="sort-left" id="sortLeft"></span></div>`;
 }
 function initSort(q){
-  Q.sortAnswer=[];const n=q.parts.length;
+  Q.sortAnswer=[];const n=ansNums(q.a).length||q.parts.length;   // 解答に使う語数(「1語不要」の問題では選択肢より少ない)
   const paint=()=>{
     const el=$('#sortAnswer'),A=Q.sortAnswer;
     el.classList.toggle('empty',!A.length);
     el.innerHTML=A.length?A.map((idx,i)=>{const p=q.parts[idx];return `<button type="button" class="sort-chip" data-pos="${i}" title="タップで取り消し"><small>${esc(p.label)}</small>${esc(p.word)}</button>`}).join(''):'<span class="sort-hole">ここに入ります</span>';
     el.querySelectorAll('[data-pos]').forEach(b=>b.onclick=()=>{if(Q.done)return;Q.sortAnswer.splice(+b.dataset.pos,1);paint()});
-    app.querySelectorAll('[data-part]').forEach(b=>b.disabled=A.includes(+b.dataset.part));
+    app.querySelectorAll('[data-part]').forEach(b=>b.disabled=A.includes(+b.dataset.part)||A.length>=n);
     $('#sortLeft').textContent=`残り ${n-A.length} 語`;
     $('#sortUndo').disabled=$('#sortClear').disabled=!A.length;
   };
@@ -304,8 +308,8 @@ function judge(v){
   if(q.fmt=='4択')app.querySelectorAll('.ch').forEach(b=>{b.disabled=true;if(b.dataset.k==q.a)b.classList.add('ok');else if(b.dataset.k==v)b.classList.add('ng')});
   else if(q.kind=='sort'){
     app.querySelectorAll('[data-part],#sortUndo,#sortClear').forEach(b=>b.disabled=true);
-    const correct=digitOrder(q.a);
-    $('#sortAnswer').innerHTML=Q.sortAnswer.map((idx,i)=>{const p=q.parts[idx],good=String(p.num)==correct[i];return `<span class="sort-chip ${good?'ok':'ng'}"><small>${esc(p.label)}</small>${esc(p.word)}</span>`}).join('');
+    const correct=ansNums(q.a);
+    $('#sortAnswer').innerHTML=Q.sortAnswer.map((idx,i)=>{const p=q.parts[idx],good=p.num===correct[i];return `<span class="sort-chip ${good?'ok':'ng'}"><small>${esc(p.label)}</small>${esc(p.word)}</span>`}).join('');
   }else{$('#ans').disabled=true;$('#ok').remove()}
   const last=Q.i==Q.list.length-1;
   const sortFeedback=q.kind=='sort'?`<p>あなたの解答: <span class="ans">${esc(Q.sortAnswer.map(i=>q.parts[i].label).join(''))}</span></p><p>正しい番号: <span class="ans">${esc(q.a)}</span></p>${q.sentence?`<p><b>正しい英文</b><br><span class="ans">${esc(q.sentence)}</span></p>`:''}`:'';
